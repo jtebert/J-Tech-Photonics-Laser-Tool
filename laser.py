@@ -25,18 +25,21 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 """
+
 import inkex
 from inkex.transforms import Transform
 from inkex.paths import Path
 
 import os
-from pathlib import Path
+from pathlib import Path as PathL
 import math
+from collections import OrderedDict
+from typing import List
 
 import re
 import sys
 import time
-import numpy
+import numpy as np
 import gettext
 
 _ = gettext.gettext
@@ -64,10 +67,11 @@ if target_version < 1.0:
 else:
     # simplestyle
 
-    # Class and method names follow the old Inkscape API for compatibility's sake.
-    # When support is dropped for older versions this can be ganged to follow PEP 8.
+    # Class and method names follow the old Inkscape API for compatibility's sake. When support is
+    # dropped for older versions this can be changed to follow PEP 8.
     class simplestyle(object):  # noqa
-        # I think anonymous declarations would have been cleaner. However, Python 2 doesn't like how I use them
+        # I think anonymous declarations would have been cleaner. However, Python 2 doesn't like how
+        # I use them.
         @staticmethod
         def formatStyle(a):  # noqa
             return str(inkex.Style(a))
@@ -83,7 +87,6 @@ else:
     from inkex.paths import CubicSuperPath  # noqa
     parsePath = CubicSuperPath
 
-
     from inkex import bezier
 
 
@@ -94,7 +97,8 @@ if "errormsg" not in dir(inkex):
 
 def bezierslopeatt(xxx_todo_changeme, t):
     ((bx0, by0), (bx1, by1), (bx2, by2), (bx3, by3)) = xxx_todo_changeme
-    ax, ay, bx, by, cx, cy, x0, y0 = bezier.bezierparameterize(((bx0, by0), (bx1, by1), (bx2, by2), (bx3, by3)))
+    ax, ay, bx, by, cx, cy, x0, y0 = \
+        bezier.bezierparameterize(((bx0, by0), (bx1, by1), (bx2, by2), (bx3, by3)))
     dx = 3 * ax * (t ** 2) + 2 * bx * t + cx
     dy = 3 * ay * (t ** 2) + 2 * by * t + cy
     if dx == dy == 0:
@@ -104,8 +108,9 @@ def bezierslopeatt(xxx_todo_changeme, t):
             dx = 6 * ax
             dy = 6 * ay
             if dx == dy == 0:
-                print_("Slope error x = %s*t^3+%s*t^2+%s*t+%s, y = %s*t^3+%s*t^2+%s*t+%s,  t = %s, dx==dy==0" % (
-                    ax, bx, cx, dx, ay, by, cy, dy, t))
+                print_("Slope error x = {ax}*t^3+{bx}*t^2+{cx}*t+{dx}, y = {ay}*t^3+{by}*t^2+{cy}*t+{dy},  t = {t}, dx==dy==0".format(
+                    ax=ax, bx=bx, cx=cx, dx=dx,
+                    ay=ay, by=by, cy=cy, dy=dy, t=t))
                 print_(((bx0, by0), (bx1, by1), (bx2, by2), (bx3, by3)))
                 dx, dy = 1, 1
 
@@ -120,8 +125,8 @@ bezier.bezierslopeatt = bezierslopeatt
 #
 ################################################################################
 
-math.pi2 = math.pi * 2
-straight_tolerance = 0.0001
+PI2 = math.pi * 2
+STRAIGHT_TOLERANCE = 0.0001
 straight_distance_tolerance = 0.0001
 engraving_tolerance = 0.0001
 loft_lengths_tolerance = 0.0000001
@@ -142,94 +147,201 @@ FOOTER_FILENAMES = ['footer', 'footer.gcode']
 intersection_recursion_depth = 10
 intersection_tolerance = 0.00001
 
-styles = {
+STYLES = {
     "loft_style": {
         'main curve': simplestyle.formatStyle(
-            {'stroke': '#88f', 'fill': 'none', 'stroke-width': '1', 'marker-end': 'url(#Arrow2Mend)'}),
+            {'stroke': '#88f',
+             'fill': 'none',
+             'stroke-width': '1',
+             'marker-end': 'url(#Arrow2Mend)'}),
     },
     "biarc_style": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#88f', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#88f',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#8f8', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#8f8',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#f88', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#f88',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#777', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.1'}),
+            {'stroke': '#777',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.1'}),
     },
     "biarc_style_dark": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#33a', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#33a',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#3a3', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#3a3',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#a33', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#a33',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#222', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#222',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
     "biarc_style_dark_area": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#33a', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.1'}),
+            {'stroke': '#33a',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.1'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#3a3', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.1'}),
+            {'stroke': '#3a3',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.1'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#a33', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.1'}),
+            {'stroke': '#a33',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.1'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#222', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#222',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
     "biarc_style_i": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#880', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#880',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#808', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#808',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#088', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#088',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#999', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#999',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
     "biarc_style_dark_i": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#dd5', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#dd5',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#d5d', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#d5d',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#5dd', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '1'}),
+            {'stroke': '#5dd',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '1'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#aaa', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#aaa',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
     "biarc_style_lathe_feed": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#07f', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#07f',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#0f7', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#0f7',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#f44', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#f44',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#aaa', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#aaa',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
     "biarc_style_lathe_passing feed": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#07f', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#07f',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#0f7', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#0f7',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#f44', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#f44',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#aaa', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#aaa',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
     "biarc_style_lathe_fine feed": {
         'biarc0': simplestyle.formatStyle(
-            {'stroke': '#7f0', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#7f0',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'biarc1': simplestyle.formatStyle(
-            {'stroke': '#f70', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#f70',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'line': simplestyle.formatStyle(
-            {'stroke': '#744', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '.4'}),
+            {'stroke': '#744',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '.4'}),
         'area': simplestyle.formatStyle(
-            {'stroke': '#aaa', 'fill': 'none', "marker-end": "url(#DrawCurveMarker)", 'stroke-width': '0.3'}),
+            {'stroke': '#aaa',
+             'fill': 'none',
+             "marker-end": "url(#DrawCurveMarker)",
+             'stroke-width': '0.3'}),
     },
-    "area artefact": simplestyle.formatStyle({'stroke': '#ff0000', 'fill': '#ffff00', 'stroke-width': '1'}),
-    "area artefact arrow": simplestyle.formatStyle({'stroke': '#ff0000', 'fill': '#ffff00', 'stroke-width': '1'}),
-    "dxf_points": simplestyle.formatStyle({"stroke": "#ff0000", "fill": "#ff0000"}),
+    "area artefact": simplestyle.formatStyle({
+        'stroke': '#ff0000',
+        'fill': '#ffff00',
+        'stroke-width': '1'}),
+    "area artefact arrow": simplestyle.formatStyle({
+        'stroke': '#ff0000',
+        'fill': '#ffff00',
+        'stroke-width': '1'}),
+    "dxf_points": simplestyle.formatStyle({
+        "stroke": "#ff0000",
+        "fill": "#ff0000"}),
 
 }
 
@@ -256,7 +368,8 @@ def csp_split(sp1, sp2, t=.5):
     y2334 = y23 + (y34 - y23) * t
     x = x1223 + (x2334 - x1223) * t
     y = y1223 + (y2334 - y1223) * t
-    return [sp1[0], sp1[1], [x12, y12]], [[x1223, y1223], [x, y], [x2334, y2334]], [[x34, y34], sp2[1], sp2[2]]
+    return [sp1[0], sp1[1], [x12, y12]], \
+        [[x1223, y1223], [x, y], [x2334, y2334]], [[x34, y34], sp2[1], sp2[2]]
 
 
 def csp_curvature_at_t(sp1, sp2, t, depth=3):
@@ -273,15 +386,21 @@ def csp_curvature_at_t(sp1, sp2, t, depth=3):
         return (f1x * f2y - f1y * f2x) / d
     else:
         t1 = f1x * f2y - f1y * f2x
-        if t1 > 0: return 1e100
-        if t1 < 0: return -1e100
+        if t1 > 0:
+            return 1e100
+        if t1 < 0:
+            return -1e100
         # Use the Lapitals rule to solve 0/0 problem for 2 times...
         t1 = 2 * (bx * ay - ax * by) * t + (ay * cx - ax * cy)
-        if t1 > 0: return 1e100
-        if t1 < 0: return -1e100
+        if t1 > 0:
+            return 1e100
+        if t1 < 0:
+            return -1e100
         t1 = bx * ay - ax * by
-        if t1 > 0: return 1e100
-        if t1 < 0: return -1e100
+        if t1 > 0:
+            return 1e100
+        if t1 < 0:
+            return -1e100
         if depth > 0:
             # little hack ;^) hope it wont influence anything...
             return csp_curvature_at_t(sp1, sp2, t * 1.004, depth - 1)
@@ -310,7 +429,6 @@ def cspseglength(sp1, sp2, tolerance=0.001):
 #        Distance calculation from point to arc
 def point_to_arc_distance(p, arc):
     P0, P2, c, a = arc
-    dist = None
     p = P(p)
     r = (P0 - c).mag()
     if r > 0:
@@ -318,10 +436,10 @@ def point_to_arc_distance(p, arc):
         alpha = ((i - c).angle() - (P0 - c).angle())
         if a * alpha < 0:
             if alpha > 0:
-                alpha = alpha - math.pi2
+                alpha = alpha - PI2
             else:
-                alpha = math.pi2 + alpha
-        if between(alpha, 0, a) or min(abs(alpha), abs(alpha - a)) < straight_tolerance:
+                alpha = PI2 + alpha
+        if between(alpha, 0, a) or min(abs(alpha), abs(alpha - a)) < STRAIGHT_TOLERANCE:
             return (p - i).mag(), (i.x, i.y)
         else:
             d1, d2 = (p - P0).mag(), (p - P2).mag()
@@ -353,36 +471,43 @@ def csp_to_arc_distance(sp1, sp2, arc1, arc2, tolerance=0.01):  # arc = [start,e
 #    Common functions
 ################################################################################
 
-def atan2(*arg):
-    if len(arg) == 1 and (type(arg[0]) == type([0., 0.]) or type(arg[0]) == type((0., 0.))):
-        return (math.pi / 2 - math.atan2(arg[0][0], arg[0][1])) % math.pi2
-    elif len(arg) == 2:
+def atan2(*args):
+    if len(args) == 1 and \
+            (isinstance(args[0], list) or isinstance(args[0], tuple)):
+        return (math.pi / 2 - math.atan2(args[0][0], args[0][1])) % PI2
+    elif len(args) == 2:
 
-        return (math.pi / 2 - math.atan2(arg[0], arg[1])) % math.pi2
+        return (math.pi / 2 - math.atan2(args[0], args[1])) % PI2
     else:
-        raise ValueError("Bad argumets for atan! (%s)" % arg)
+        raise ValueError("Bad arguments for atan! ({})".format(args))
 
 
 def between(c, x, y):
-    return x - straight_tolerance <= c <= y + straight_tolerance or y - straight_tolerance <= c <= x + straight_tolerance
+    return x - STRAIGHT_TOLERANCE <= c <= y + STRAIGHT_TOLERANCE or \
+        y - STRAIGHT_TOLERANCE <= c <= x + STRAIGHT_TOLERANCE
 
 
-# Print arguments into specified log file
 def print_(*arg):
-    with open(options.log_filename, "a") as log_file:
-        for s in arg:
-            s = str(str(s).encode('unicode_escape')) + " "
-            log_file.write(s)
-        log_file.write("\n")
+    """
+    Print arguments into the specified log file (in options.log_filename).
 
+    If there is no log file specified, or it could not be written to, the statements will be tossed.
+    """
+    if options.log_filename is not None:
+        with open(options.log_filename, "a") as log_file:
+            for s in arg:
+                s = str(str(s).encode('unicode_escape')) + " "
+                log_file.write(s)
+            log_file.write("\n")
 
-################################################################################
-#        Point (x,y) operations
-################################################################################
 
 class P:
+    """
+    Point (x, y) operations
+    """
+
     def __init__(self, x, y=None):
-        if not y == None:
+        if y is not None:
             self.x, self.y = float(x), float(y)
         else:
             self.x, self.y = float(x[0]), float(x[1])
@@ -424,21 +549,30 @@ class P:
         return math.atan2(self.y, self.x)
 
     def __repr__(self):
-        return '%f,%f' % (self.x, self.y)
+        return '{},{}'.format(self.x, self.y)
 
     def l2(self):
         return self.x * self.x + self.y * self.y
 
 
-################################################################################
-#
-#        Biarc function
-#
-#        Calculates biarc approximation of cubic super path segment
-#        splits segment if needed or approximates it with straight line
-#
-################################################################################
 def biarc(sp1, sp2, z1, z2, depth=0):
+    """
+    Calculates biarc approximation of cubic super path segment splits segment if needed or
+    approximates it with straight line
+
+    Parameters
+    ----------
+    sp1 : [type]
+        [description]
+    sp2 : [type]
+        [description]
+    z1 : [type]
+        [description]
+    z2 : [type]
+        [description]
+    depth : int, optional
+        [description], by default 0
+    """
     def biarc_split(sp1, sp2, z1, z2, depth):
         if depth < options.biarc_max_split_depth:
             sp1, sp2, sp3 = csp_split(sp1, sp2)
@@ -452,10 +586,14 @@ def biarc(sp1, sp2, z1, z2, depth=0):
             return [[sp1[1], 'line', 0, 0, sp2[1], [z1, z2]]]
 
     P0, P4 = P(sp1[1]), P(sp2[1])
-    TS, TE, v = (P(sp1[2]) - P0), -(P(sp2[0]) - P4), P0 - P4
-    tsa, tea, va = TS.angle(), TE.angle(), v.angle()
+    TS = (P(sp1[2]) - P0)
+    TE = -(P(sp2[0]) - P4)
+    v = P0 - P4
+    tsa = TS.angle()
+    tea = TE.angle()
+    # va =  v.angle()
     if TE.mag() < straight_distance_tolerance and TS.mag() < straight_distance_tolerance:
-        # Both tangents are zerro - line straight
+        # Both tangents are zero - line straight
         return [[sp1[1], 'line', 0, 0, sp2[1], [z1, z2]]]
     if TE.mag() < straight_distance_tolerance:
         TE = -(TS + v).unit()
@@ -467,13 +605,15 @@ def biarc(sp1, sp2, z1, z2, depth=0):
         r = TS.mag() / TE.mag()
     TS, TE = TS.unit(), TE.unit()
     tang_are_parallel = (
-            (tsa - tea) % math.pi < straight_tolerance or math.pi - (tsa - tea) % math.pi < straight_tolerance)
-    if (tang_are_parallel and
-            ((
-                     v.mag() < straight_distance_tolerance or TE.mag() < straight_distance_tolerance or TS.mag() < straight_distance_tolerance) or
-             1 - abs(TS * v / (TS.mag() * v.mag())) < straight_tolerance)):
+        (tsa - tea) % math.pi < STRAIGHT_TOLERANCE or
+        math.pi - (tsa - tea) % math.pi < STRAIGHT_TOLERANCE)
+    if tang_are_parallel and \
+            ((v.mag() < straight_distance_tolerance or
+              TE.mag() < straight_distance_tolerance or
+              TS.mag() < straight_distance_tolerance) or
+             1 - abs(TS * v / (TS.mag() * v.mag())) < STRAIGHT_TOLERANCE):
         # Both tangents are parallel and start and end are the same - line straight
-        # or one of tangents still smaller then tollerance
+        # or one of tangents still smaller then tolerance
 
         # Both tangents and v are parallel - line straight
         return [[sp1[1], 'line', 0, 0, sp2[1], [z1, z2]]]
@@ -481,18 +621,22 @@ def biarc(sp1, sp2, z1, z2, depth=0):
     c, b, a = v * v, 2 * v * (r * TS + TE), 2 * r * (TS * TE - 1)
     if v.mag() == 0:
         return biarc_split(sp1, sp2, z1, z2, depth)
-    asmall, bsmall, csmall = abs(a) < 10 ** -10, abs(b) < 10 ** -10, abs(c) < 10 ** -10
+    asmall = abs(a) < 10 ** -10,
+    bsmall = abs(b) < 10 ** -10,
+    csmall = abs(c) < 10 ** -10
     if asmall and b != 0:
         beta = -c / b
     elif csmall and a != 0:
         beta = -b / a
     elif not asmall:
         discr = b * b - 4 * a * c
-        if discr < 0:    raise ValueError(a, b, c, discr)
+        if discr < 0:
+            raise ValueError(a, b, c, discr)
         disq = discr ** .5
         beta1 = (-b - disq) / 2 / a
         beta2 = (-b + disq) / 2 / a
-        if beta1 * beta2 > 0:    raise ValueError(a, b, c, disq, beta1, beta2)
+        if beta1 * beta2 > 0:
+            raise ValueError(a, b, c, disq, beta1, beta2)
         beta = max(beta1, beta2)
     elif asmall and bsmall:
         return biarc_split(sp1, sp2, z1, z2, depth)
@@ -502,14 +646,15 @@ def biarc(sp1, sp2, z1, z2, depth=0):
     P3 = P4 - beta * TE
     P2 = (beta / ab) * P1 + (alpha / ab) * P3
 
-
     def calculate_arc_params(P0, P1, P2):
         D = (P0 + P2) / 2
-        if (D - P1).mag() == 0: return None, None
+        if (D - P1).mag() == 0:
+            return None, None
         R = D - ((D - P0).mag() ** 2 / (D - P1).mag()) * (P1 - D).unit()
-        p0a, p1a, p2a = (P0 - R).angle() % (2 * math.pi), (P1 - R).angle() % (2 * math.pi), (P2 - R).angle() % (
-                2 * math.pi)
-        alpha = (p2a - p0a) % (2 * math.pi)
+        p0a = (P0 - R).angle() % PI2
+        p1a = (P1 - R).angle() % PI2
+        p2a = (P2 - R).angle() % PI2
+        alpha = (p2a - p0a) % PI2
         if (p0a < p2a and (p1a < p0a or p2a < p1a)) or (p2a < p1a < p0a):
             alpha = -2 * math.pi + alpha
         if abs(R.x) > 1000000 or abs(R.y) > 1000000 or (R - P0).mag() < .1:
@@ -519,8 +664,9 @@ def biarc(sp1, sp2, z1, z2, depth=0):
 
     R1, a1 = calculate_arc_params(P0, P1, P2)
     R2, a2 = calculate_arc_params(P2, P3, P4)
-    if R1 == None or R2 == None or (R1 - P0).mag() < straight_tolerance or (
-            R2 - P2).mag() < straight_tolerance: return [[sp1[1], 'line', 0, 0, sp2[1], [z1, z2]]]
+    if R1 is None or R2 is None or (R1 - P0).mag() < STRAIGHT_TOLERANCE or (
+            R2 - P2).mag() < STRAIGHT_TOLERANCE:
+        return [[sp1[1], 'line', 0, 0, sp2[1], [z1, z2]]]
 
     d = csp_to_arc_distance(sp1, sp2, [P0, P2, R1, a1], [P2, P4, R2, a2])
     if d > 1 and depth < options.biarc_max_split_depth:
@@ -534,24 +680,25 @@ def biarc(sp1, sp2, z1, z2, depth=0):
                 [[P2.x, P2.y], 'arc', [R2.x, R2.y], a2, [P4.x, P4.y], [zm, z2]]]
 
 
-################################################################################
-#        Polygon class
-################################################################################
 class Polygon:
+    """
+    Polygon class
+    """
+
     def __init__(self, polygon=None):
-        self.polygon = [] if polygon == None else polygon[:]
+        self.polygon = [] if polygon is None else polygon[:]
 
     def add(self, add):
-        if type(add) == type([]):
+        if isinstance(add, list):
             self.polygon += add[:]
         else:
             self.polygon += add.polygon[:]
 
 
 class ArrangementGenetic:
-    # gene = [fittness, order, rotation, xposition]
-    # spieces = [gene]*shapes count
-    # population = [spieces]
+    # gene = [fitness, order, rotation, xposition]
+    # species = [gene]*shapes count
+    # population = [species]
     def __init__(self, polygons, material_width):
         self.population = []
         self.genes_count = len(polygons)
@@ -562,13 +709,10 @@ class ArrangementGenetic:
         self.move_mutate_factor = 1.
 
 
-################################################################################
-###
-###        Gcodetools class
-###
-################################################################################
-
 class LaserGcode(inkex.Effect):
+    """
+    Gcodetools class
+    """
 
     def export_gcode(self, gcode_single_pass: str):
         """
@@ -613,15 +757,16 @@ class LaserGcode(inkex.Effect):
         add_argument = self.arg_parser.add_argument
 
         for arg in self.arguments:
-            # Not using kwargs unpacking for clarity, flexibility and constancy with add_arguments_old
+            # Not using kwargs unpacking for clarity, flexibility, and constancy with
+            # add_arguments_old
             action = arg["action"] if "action" in arg else "store"
             add_argument(arg["name"], action=action, type=arg["type"], dest=arg["dest"],
                          default=arg["default"], help=arg["help"])
 
     def __init__(self):
+        # Define command line arguments, inkex will use these to interface with the GUI defined in
+        # laser.ini
         inkex.Effect.__init__(self)
-
-        # Define command line arguments, inkex will use these to interface with the GUI defined in laser.ini
 
         self.arguments = [
             {"name": "--directory", "type": str, "dest": "directory",
@@ -718,37 +863,45 @@ class LaserGcode(inkex.Effect):
             for i in range(1, len(subpath)):
                 sp1 = [[subpath[i - 1][j][0], subpath[i - 1][j][1]] for j in range(3)]
                 sp2 = [[subpath[i][j][0], subpath[i][j][1]] for j in range(3)]
-                c += biarc(sp1, sp2, 0, 0) if w == None else biarc(sp1, sp2, -f(w[k][i - 1]), -f(w[k][i]))
+                c += biarc(sp1, sp2, 0, 0) if w is None else biarc(sp1, sp2, -f(w[k][i - 1]), -f(w[k][i]))
             #                    l1 = biarc(sp1,sp2,0,0) if w==None else biarc(sp1,sp2,-f(w[k][i-1]),-f(w[k][i]))
             #                    print_((-f(w[k][i-1]),-f(w[k][i]), [i1[5] for i1 in l1]) )
             c += [[[subpath[-1][1][0], subpath[-1][1][1]], 'end', 0, 0]]
-            print_("Curve: " + str(c))
+            print_("Curve: {}".format(c))
         return c
 
-    def draw_curve(self, curve, layer, group=None, style=styles["biarc_style"]):
+    def draw_curve(self, curve, layer, group=None, style=STYLES["biarc_style"]):
 
         self.get_defs()
         # Add marker to defs if it does not exist
         if "DrawCurveMarker" not in self.defs:
             defs = etree.SubElement(self.document.getroot(), inkex.addNS("defs", "svg"))
-            marker = etree.SubElement(defs, inkex.addNS("marker", "svg"),
-                                            {"id": "DrawCurveMarker", "orient": "auto", "refX": "-8",
-                                             "refY": "-2.41063", "style": "overflow:visible"})
-            etree.SubElement(marker, inkex.addNS("path", "svg"),
-                                   {
-                                       "d": "m -6.55552,-2.41063 0,0 L -13.11104,0 c 1.0473,-1.42323 1.04126,-3.37047 0,-4.82126",
-                                       "style": "fill:#000044; fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"}
-                                   )
+            marker = etree.SubElement(
+                defs, inkex.addNS("marker", "svg"),
+                {"id": "DrawCurveMarker",
+                 "orient": "auto",
+                 "refX": "-8",
+                 "refY": "-2.41063",
+                 "style": "overflow:visible"})
+            etree.SubElement(
+                marker, inkex.addNS("path", "svg"),
+                {"d": "m -6.55552,-2.41063 0,0 L -13.11104,0 c 1.0473,-1.42323 1.04126,-3.37047 0,-4.82126",
+                 "style": "fill:#000044; fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"}
+            )
         if "DrawCurveMarker_r" not in self.defs:
             defs = etree.SubElement(self.document.getroot(), inkex.addNS("defs", "svg"))
-            marker = etree.SubElement(defs, inkex.addNS("marker", "svg"),
-                                            {"id": "DrawCurveMarker_r", "orient": "auto", "refX": "8",
-                                             "refY": "-2.41063", "style": "overflow:visible"})
-            etree.SubElement(marker, inkex.addNS("path", "svg"),
-                                   {
-                                       "d": "m 6.55552,-2.41063 0,0 L 13.11104,0 c -1.0473,-1.42323 -1.04126,-3.37047 0,-4.82126",
-                                       "style": "fill:#000044; fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"}
-                                   )
+            marker = etree.SubElement(
+                defs, inkex.addNS("marker", "svg"),
+                {"id": "DrawCurveMarker_r",
+                 "orient": "auto",
+                 "refX": "8",
+                 "refY": "-2.41063",
+                 "style": "overflow:visible"})
+            etree.SubElement(
+                marker, inkex.addNS("path", "svg"),
+                {"d": "m 6.55552,-2.41063 0,0 L 13.11104,0 c -1.0473,-1.42323 -1.04126,-3.37047 0,-4.82126",
+                 "style": "fill:#000044; fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"}
+            )
         for i in [0, 1]:
             style['biarc%s_r' % i] = simplestyle.parseStyle(style['biarc%s' % i])
             style['biarc%s_r' % i]["marker-start"] = "url(#DrawCurveMarker_r)"
@@ -756,45 +909,48 @@ class LaserGcode(inkex.Effect):
             style['biarc%s_r' % i] = simplestyle.formatStyle(style['biarc%s_r' % i])
 
         if group is None:
-            group = etree.SubElement(self.layers[min(1, len(self.layers) - 1)], inkex.addNS('g', 'svg'),
-                                           {"gcodetools": "Preview group"})
+            group = etree.SubElement(
+                self.layers[min(1, len(self.layers) - 1)], inkex.addNS('g', 'svg'),
+                {"gcodetools": "Preview group"})
         s, arcn = '', 0
 
         a, b, c = [0., 0.], [1., 0.], [0., 1.]
         k = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])
-        a, b, c = self.transform(a, layer, True), self.transform(b, layer, True), self.transform(c, layer, True)
+        a = self.transform(a, layer, True)
+        b = self.transform(b, layer, True)
+        c = self.transform(c, layer, True)
         if ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) * k > 0:
             reverse_angle = 1
         else:
             reverse_angle = -1
         for sk in curve:
             si = sk[:]
-            si[0], si[2] = self.transform(si[0], layer, True), (
-                self.transform(si[2], layer, True) if isinstance(si[2], list) and len(si[2]) == 2 else si[2])
-
+            si[0] = self.transform(si[0], layer, True)
+            if isinstance(si[2], list) and len(si[2]) == 2:
+                si[2] = self.transform(si[2], layer, True)
+            else:
+                si[2] = si[2]
             if s != '':
                 if s[1] == 'line':
-                    etree.SubElement(group, inkex.addNS('path', 'svg'),
-                                           {
-                                               'style': style['line'],
-                                               'd': 'M %s,%s L %s,%s' % (s[0][0], s[0][1], si[0][0], si[0][1]),
-                                               "gcodetools": "Preview",
-                                           }
-                                           )
+                    etree.SubElement(group, inkex.addNS('path', 'svg'), {
+                        'style': style['line'],
+                        'd': 'M {x},{y} L {x},{y}'.format(x=s[0][0], y=s[0][1]),
+                        "gcodetools": "Preview",
+                    })
                 elif s[1] == 'arc':
                     arcn += 1
                     sp = s[0]
                     c = s[2]
                     s[3] = s[3] * reverse_angle
 
-                    a = ((P(si[0]) - P(c)).angle() - (P(s[0]) - P(c)).angle()) % math.pi2  # s[3]
+                    a = ((P(si[0]) - P(c)).angle() - (P(s[0]) - P(c)).angle()) % PI2  # s[3]
                     if s[3] * a < 0:
                         if a > 0:
-                            a = a - math.pi2
+                            a = a - PI2
                         else:
-                            a = math.pi2 + a
+                            a = PI2 + a
                     r = math.sqrt((sp[0] - c[0]) ** 2 + (sp[1] - c[1]) ** 2)
-                    a_st = (math.atan2(sp[0] - c[0], - (sp[1] - c[1])) - math.pi / 2) % (math.pi * 2)
+                    a_st = (math.atan2(sp[0] - c[0], - (sp[1] - c[1])) - math.pi / 2) % PI2
                     st = style['biarc%s' % (arcn % 2)][:]
                     if a > 0:
                         a_end = a_st + a
@@ -804,18 +960,18 @@ class LaserGcode(inkex.Effect):
                         a_st = a_st + a
                         st = style['biarc%s_r' % (arcn % 2)]
                     etree.SubElement(group, inkex.addNS('path', 'svg'),
-                                           {
-                                               'style': st,
-                                               inkex.addNS('cx', 'sodipodi'): str(c[0]),
-                                               inkex.addNS('cy', 'sodipodi'): str(c[1]),
-                                               inkex.addNS('rx', 'sodipodi'): str(r),
-                                               inkex.addNS('ry', 'sodipodi'): str(r),
-                                               inkex.addNS('start', 'sodipodi'): str(a_st),
-                                               inkex.addNS('end', 'sodipodi'): str(a_end),
-                                               inkex.addNS('open', 'sodipodi'): 'true',
-                                               inkex.addNS('type', 'sodipodi'): 'arc',
-                                               "gcodetools": "Preview",
-                                           })
+                                     {
+                        'style': st,
+                        inkex.addNS('cx', 'sodipodi'): str(c[0]),
+                        inkex.addNS('cy', 'sodipodi'): str(c[1]),
+                        inkex.addNS('rx', 'sodipodi'): str(r),
+                        inkex.addNS('ry', 'sodipodi'): str(r),
+                        inkex.addNS('start', 'sodipodi'): str(a_st),
+                        inkex.addNS('end', 'sodipodi'): str(a_end),
+                        inkex.addNS('open', 'sodipodi'): 'true',
+                        inkex.addNS('type', 'sodipodi'): 'arc',
+                        "gcodetools": "Preview",
+                    })
             s = si
 
     def check_dir(self) -> bool:
@@ -846,7 +1002,7 @@ class LaserGcode(inkex.Effect):
             return False
 
         # directory = os.path.abspath(os.path.expanduser(self.options.directory))
-        directory = Path(self.options.directory).expanduser()
+        directory = PathL(self.options.directory).expanduser()
 
         print_("Checking directory: '{}'".format(directory))
 
@@ -859,7 +1015,8 @@ class LaserGcode(inkex.Effect):
                 return False
 
         # Create G code header
-        headers = [directory.joinpath(h) for h in HEADER_FILENAMES if directory.joinpath(h).is_file()]
+        headers = [directory.joinpath(h) for h in HEADER_FILENAMES
+                   if directory.joinpath(h).is_file()]
         if len(headers) != 0:
             header_file = headers[0]
             with header_file.open('r') as file:
@@ -868,7 +1025,8 @@ class LaserGcode(inkex.Effect):
             # No header file found. Use the default header
             self.header = DEFAULTS['header']
         # Create G code footer
-        footers = [directory.joinpath(f) for f in FOOTER_FILENAMES if directory.joinpath(f).is_file()]
+        footers = [directory.joinpath(f) for f in FOOTER_FILENAMES
+                   if directory.joinpath(f).is_file()]
         if len(footers) != 0:
             footer_file = footers[0]
             with footer_file.open('r') as file:
@@ -884,7 +1042,7 @@ class LaserGcode(inkex.Effect):
             self.header += "G20\n"
 
         if self.options.add_numeric_suffix_to_filename:
-            file = Path(self.options.file)
+            file = PathL(self.options.file)
             name = file.stem
             ext = file.suffix
 
@@ -893,7 +1051,7 @@ class LaserGcode(inkex.Effect):
             # Get the highest file number used so far
             num_length = 4  # Length of numbers in file names (zero-padded)
             # Get the stems (no extensions) of all files that match the format
-            stems = [Path(f).stem for f in all_filenames if re.match(
+            stems = [PathL(f).stem for f in all_filenames if re.match(
                 r"^%s_0*(\d+)%s$" % (re.escape(name), re.escape(ext)), f)]
             # Extract the regex of the 4-digit number portion of the filename
             file_num_re = [re.search(r"_[0-9]{%s}" % num_length, s) for s in stems]
@@ -924,46 +1082,52 @@ class LaserGcode(inkex.Effect):
         self.options.directory = directory
         return True
 
-    ################################################################################
-    #
-    #       Generate Gcode
-    #
-    #       Curve definition
-    #       [start point, type = {'arc','line','move','end'}, arc center, arc angle, end point, [zstart, zend]]
-    #
-    ################################################################################
+    def generate_gcode(self, curve, layer, depth) -> str:
+        """
+        Generate G-code
 
-    def generate_gcode(self, curve, layer, depth):
+        Curve definition:
+        [start point, type = {'arc','line','move','end'}, arc center, arc angle, end point, [zstart, zend]]
+
+
+        Parameters
+        ----------
+        curve : [type]
+            [description]
+        layer : [type]
+            [description]
+        depth : [type]
+            [description]
+
+        Returns
+        -------
+        str
+            [description]
+        """
         tool = self.tools
-        print_("Tool in g-code generator: " + str(tool))
+        print_("Tool in g-code generator: {}".format(tool))
 
         def c(c):
             c = [c[i] if i < len(c) else None for i in range(6)]
-            if c[5] == 0: c[5] = None
+            if c[5] == 0:
+                c[5] = None
             s = [" X", " Y", " Z", " I", " J", " K"]
             r = ''
             for i in range(6):
-                if c[i] != None:
-                    r += s[i] + ("%f" % (round(c[i], 4))).rstrip('0')
+                if c[i] is not None:
+                    r += "{}{}".format(s[i], round(c[i], 4))
             return r
 
+        if len(curve) == 0:
+            return ""
 
-        if len(curve) == 0: return ""
-
-        # TODO: This makes no sense
-        try:
-            self.last_used_tool == None
-        except:
-            self.last_used_tool = None
-        print_("working on curve")
-        print_("Curve: " + str(curve))
+        print_("Working on curve")
+        print_("Curve: {}".format(curve))
         g = ""
 
-        lg, f = 'G00', "F%f" % tool['penetration feed']
-        penetration_feed = "F%s" % tool['penetration feed']
-        current_a = 0
+        lg, f = 'G00', "F{}".format(tool['penetration feed'])
         for i in range(1, len(curve)):
-            #    Creating Gcode for curve between s=curve[i-1] and si=curve[i] start at s[0] end at s[4]=si[0]
+            # Creating Gcode for curve between s=curve[i-1] and si=curve[i] start at s[0] end at s[4]=si[0]
             s, si = curve[i - 1], curve[i]
             feed = f if lg not in ['G01', 'G02', 'G03'] else ''
             if s[1] == 'move':
@@ -973,12 +1137,14 @@ class LaserGcode(inkex.Effect):
                 g += tool['gcode after path'] + "\n"
                 lg = 'G00'
             elif s[1] == 'line':
-                if lg == "G00": g += "G1 " + feed + "\n"
+                if lg == "G00":
+                    g += "G1 " + feed + "\n"
                 g += "G1 " + c(si[0]) + "\n"
                 lg = 'G01'
             elif s[1] == 'arc':
                 r = [(s[2][0] - s[0][0]), (s[2][1] - s[0][1])]
-                if lg == "G00": g += "G1 " + feed + "\n"
+                if lg == "G00":
+                    g += "G1 " + feed + "\n"
                 if (r[0] ** 2 + r[1] ** 2) > .1:
                     r1, r2 = (P(s[0]) - P(s[2])), (P(si[0]) - P(s[2]))
                     if abs(r1.mag() - r2.mag()) < 0.001:
@@ -986,7 +1152,7 @@ class LaserGcode(inkex.Effect):
                             si[0] + [None, (s[2][0] - s[0][0]), (s[2][1] - s[0][1])]) + "\n"
                     else:
                         r = (r1.mag() + r2.mag()) / 2
-                        g += ("G2" if s[3] < 0 else "G3") + c(si[0]) + " R%f" % (r) + "\n"
+                        g += ("G2" if s[3] < 0 else "G3") + c(si[0]) + " R{}\n".format(r)
                     lg = 'G02'
                 else:
                     g += "G1 " + c(si[0]) + " " + feed + "\n"
@@ -1001,8 +1167,11 @@ class LaserGcode(inkex.Effect):
         while (g != root):
             if 'transform' in list(g.keys()):
                 t = g.get('transform')
-                t = [list(row) for row in Transform(t).matrix] 
-                trans = [list(row) for row in (Transform(t) * Transform(trans)).matrix] if trans != [] else t
+                t = [list(row) for row in Transform(t).matrix]
+                if trans != []:
+                    trans = [list(row) for row in (Transform(t) * Transform(trans)).matrix]
+                else:
+                    trans = t
                 print_(trans)
             g = g.getparent()
         return trans
@@ -1010,32 +1179,37 @@ class LaserGcode(inkex.Effect):
     def apply_transforms(self, g, csp):
         trans = self.get_transforms(g)
         if trans != []:
-            csp = Path(csp).transform(Transform(trans)).to_superpath()
+            csp = PathL(csp).transform(Transform(trans)).to_superpath()
         return csp
 
     def transform(self, source_point, layer, reverse=False):
-        if layer == None:
-            layer = self.current_layer if self.current_layer is not None else self.document.getroot()
+        if layer is None:
+            if self.current_layer is not None:
+                layer = self.current_layer
+            else:
+                layer = self.document.getroot()
         if layer not in self.transform_matrix:
             for i in range(self.layers.index(layer), -1, -1):
                 if self.layers[i] in self.orientation_points:
                     break
 
             print_(str(self.layers))
-            print_(str("I: " + str(i)))
-            print_("Transform: " + str(self.layers[i]))
+            print_("I: {}".format(i))
+            print_("Transform: {}".format(self.layers[i]))
             if self.layers[i] not in self.orientation_points:
                 self.error(_(
-                    "Orientation points for '%s' layer have not been found! Please add orientation points using Orientation tab!") % layer.get(
-                    inkex.addNS('label', 'inkscape')), "no_orientation_points")
+                    "Orientation points for '{}' layer have not been found! Please add orientation points using Orientation tab!").format(
+                        layer.get(inkex.addNS('label', 'inkscape'))),
+                    "no_orientation_points")
             elif self.layers[i] in self.transform_matrix:
                 self.transform_matrix[layer] = self.transform_matrix[self.layers[i]]
             else:
                 orientation_layer = self.layers[i]
                 if len(self.orientation_points[orientation_layer]) > 1:
                     self.error(
-                        _("There are more than one orientation point groups in '%s' layer") % orientation_layer.get(
-                            inkex.addNS('label', 'inkscape')), "more_than_one_orientation_point_groups")
+                        _("There are more than one orientation point groups in '{}' layer").format(
+                            orientation_layer.get(inkex.addNS('label', 'inkscape'))),
+                        "more_than_one_orientation_point_groups")
                 points = self.orientation_points[orientation_layer][0]
                 if len(points) == 2:
                     points += [[[(points[1][0][1] - points[0][0][1]) + points[0][0][0],
@@ -1043,13 +1217,14 @@ class LaserGcode(inkex.Effect):
                                 [-(points[1][1][1] - points[0][1][1]) + points[0][1][0],
                                  points[1][1][0] - points[0][1][0] + points[0][1][1]]]]
                 if len(points) == 3:
-                    print_("Layer '%s' Orientation points: " % orientation_layer.get(inkex.addNS('label', 'inkscape')))
+                    print_("Layer '{}' Orientation points: ".format(
+                        orientation_layer.get(inkex.addNS('label', 'inkscape'))))
                     for point in points:
                         print_(point)
-                    #    Zcoordinates definition taken from Orientatnion point 1 and 2
+                    # Zcoordinates definition taken from Orientation point 1 and 2
                     self.Zcoordinates[layer] = [max(points[0][1][2], points[1][1][2]),
                                                 min(points[0][1][2], points[1][1][2])]
-                    matrix = numpy.array([
+                    matrix = np.array([
                         [points[0][0][0], points[0][0][1], 1, 0, 0, 0, 0, 0, 0],
                         [0, 0, 0, points[0][0][0], points[0][0][1], 1, 0, 0, 0],
                         [0, 0, 0, 0, 0, 0, points[0][0][0], points[0][0][1], 1],
@@ -1061,32 +1236,37 @@ class LaserGcode(inkex.Effect):
                         [0, 0, 0, 0, 0, 0, points[2][0][0], points[2][0][1], 1]
                     ])
 
-                    if numpy.linalg.det(matrix) != 0:
-                        m = numpy.linalg.solve(matrix,
-                                               numpy.array(
-                                                   [[points[0][1][0]], [points[0][1][1]], [1], [points[1][1][0]],
-                                                    [points[1][1][1]], [1], [points[2][1][0]], [points[2][1][1]], [1]]
-                                               )
-                                               ).tolist()
-                        self.transform_matrix[layer] = [[m[j * 3 + i][0] for i in range(3)] for j in range(3)]
+                    if np.linalg.det(matrix) != 0:
+                        m = np.linalg.solve(
+                            matrix,
+                            np.array(
+                                [[points[0][1][0]], [points[0][1][1]], [1], [points[1][1][0]],
+                                 [points[1][1][1]], [1], [points[2][1][0]], [points[2][1][1]], [1]]
+                            )
+                        ).tolist()
+                        self.transform_matrix[layer] = \
+                            [[m[j * 3 + i][0] for i in range(3)] for j in range(3)]
 
                     else:
                         self.error(_(
-                            "Orientation points are wrong! (if there are two orientation points they sould not be the same. If there are three orientation points they should not be in a straight line.)"),
+                            "Orientation points are wrong! (if there are two orientation points they should not be the same. If there are three orientation points they should not be in a straight line.)"),
                             "wrong_orientation_points")
                 else:
                     self.error(_(
-                        "Orientation points are wrong! (if there are two orientation points they sould not be the same. If there are three orientation points they should not be in a straight line.)"),
+                        "Orientation points are wrong! (if there are two orientation points they should not be the same. If there are three orientation points they should not be in a straight line.)"),
                         "wrong_orientation_points")
 
-            self.transform_matrix_reverse[layer] = numpy.linalg.inv(self.transform_matrix[layer]).tolist()
-            print_("\n Layer '%s' transformation matrixes:" % layer.get(inkex.addNS('label', 'inkscape')))
+            self.transform_matrix_reverse[layer] = \
+                np.linalg.inv(self.transform_matrix[layer]).tolist()
+            print_("\n Layer '{}' transformation matrixes:".format(
+                layer.get(inkex.addNS('label', 'inkscape'))))
             print_(self.transform_matrix)
             print_(self.transform_matrix_reverse)
 
             # Zautoscale is absolute
             self.Zauto_scale[layer] = 1
-            print_("Z automatic scale = %s (computed according orientation points)" % self.Zauto_scale[layer])
+            print_("Z automatic scale = {} (computed according orientation points)".format(
+                self.Zauto_scale[layer]))
 
         x, y = source_point[0], source_point[1]
         if not reverse:
@@ -1096,22 +1276,32 @@ class LaserGcode(inkex.Effect):
         return [t[0][0] * x + t[0][1] * y + t[0][2], t[1][0] * x + t[1][1] * y + t[1][2]]
 
     def transform_csp(self, csp_, layer, reverse=False):
-        csp = [[[csp_[i][j][0][:], csp_[i][j][1][:], csp_[i][j][2][:]] for j in range(len(csp_[i]))] for i in
-               range(len(csp_))]
+        csp = [[[csp_[i][j][0][:], csp_[i][j][1][:], csp_[i][j][2][:]]
+                for j in range(len(csp_[i]))]
+               for i in range(len(csp_))]
         for i in range(len(csp)):
             for j in range(len(csp[i])):
                 for k in range(len(csp[i][j])):
                     csp[i][j][k] = self.transform(csp[i][j][k], layer, reverse)
         return csp
 
-    ################################################################################
-    #        Errors handling function, notes are just printed into Logfile,
-    #        warnings are printed into log file and warning message is displayed but
-    #        extension continues working, errors causes log and execution is halted
-    #        Notes, warnings adn errors could be assigned to space or comma or dot
-    #        sepparated strings (case is ignoreg).
-    ################################################################################
     def error(self, s, type_="Warning"):
+        """Error handling function.
+
+        Notes are just printed into Logfile. Warnings are printed into log file and the warning
+        message is displayed, but the extension continues working. Errors causes log and execution
+        to halt.
+
+        Notes, warnings, and errors could be assigned to space or comma or dot separated strings
+        (case is ignored).
+
+        Parameters
+        ----------
+        s : [type]
+            [description]
+        type_ : [type], optional
+            [description], by default "Warning"
+        """
         notes = "Note "
         warnings = """
                         Warning tools_warning
@@ -1148,10 +1338,10 @@ class LaserGcode(inkex.Effect):
             inkex.errormsg(s)
             sys.exit()
 
-    ################################################################################
-    #        Get defs from svg
-    ################################################################################
     def get_defs(self):
+        """
+        Get defs from SVG
+        """
         self.defs = {}
 
         def recursive(g):
@@ -1164,13 +1354,10 @@ class LaserGcode(inkex.Effect):
 
         recursive(self.document.getroot())
 
-    ################################################################################
-    #
-    #        Get Gcodetools info from the svg
-    #
-    ################################################################################
-
     def get_info(self):
+        """
+        Get Gcodetools info from the SVG
+        """
         self.selected_paths = {}
         self.paths = {}
         self.orientation_points = {}
@@ -1186,20 +1373,23 @@ class LaserGcode(inkex.Effect):
             for i in items:
                 if selected:
                     self.selected_hack[i.get("id")] = i
-                if i.tag == inkex.addNS("g", 'svg') and i.get(inkex.addNS('groupmode', 'inkscape')) == 'layer':
+                if i.tag == inkex.addNS("g", 'svg') and \
+                        i.get(inkex.addNS('groupmode', 'inkscape')) == 'layer':
                     self.layers += [i]
                     recursive_search(i, i)
                 elif i.get('gcodetools') == "Gcodetools orientation group":
                     points = self.get_orientation_points(i)
-                    if points != None:
+                    if points is not None:
                         self.orientation_points[layer] = self.orientation_points[layer] + [
                             points[:]] if layer in self.orientation_points else [points[:]]
-                        print_("Found orientation points in '%s' layer: %s" % (
-                            layer.get(inkex.addNS('label', 'inkscape')), points))
+                        print_("Found orientation points in {layer} layer: {points}".format(
+                            layer=layer.get(inkex.addNS('label', 'inkscape')),
+                            points=points))
                     else:
                         self.error(_(
-                            "Warning! Found bad orientation points in '%s' layer. Resulting Gcode could be corrupt!") % layer.get(
-                            inkex.addNS('label', 'inkscape')), "bad_orientation_points_in_some_layers")
+                            "Warning! Found bad orientation points in '{}' layer. Resulting Gcode could be corrupt!").format(
+                                layer.get(inkex.addNS('label', 'inkscape'))),
+                            "bad_orientation_points_in_some_layers")
                 elif i.tag == inkex.addNS('path', 'svg'):
                     if "gcodetools" not in list(i.keys()):
                         self.paths[layer] = self.paths[layer] + [i] if layer in self.paths else [i]
@@ -1221,15 +1411,18 @@ class LaserGcode(inkex.Effect):
         p2, p3 = [], []
         p = None
         for i in items:
-            if i.tag == inkex.addNS("g", 'svg') and i.get("gcodetools") == "Gcodetools orientation point (2 points)":
+            if i.tag == inkex.addNS("g", 'svg') and \
+                    i.get("gcodetools") == "Gcodetools orientation point (2 points)":
                 p2 += [i]
-            if i.tag == inkex.addNS("g", 'svg') and i.get("gcodetools") == "Gcodetools orientation point (3 points)":
+            if i.tag == inkex.addNS("g", 'svg') and \
+                    i.get("gcodetools") == "Gcodetools orientation point (3 points)":
                 p3 += [i]
         if len(p2) == 2:
             p = p2
         elif len(p3) == 3:
             p = p3
-        if p == None: return None
+        if p is None:
+            return None
         points = []
         for i in p:
             point = [[], []]
@@ -1241,18 +1434,17 @@ class LaserGcode(inkex.Effect):
                         r'(?i)\s*\(\s*(-?\s*\d*(?:,|\.)*\d*)\s*;\s*(-?\s*\d*(?:,|\.)*\d*)\s*;\s*(-?\s*\d*(?:,|\.)*\d*)\s*\)\s*',
                         node.text)
                     point[1] = [float(r.group(1)), float(r.group(2)), float(r.group(3))]
-            if point[0] != [] and point[1] != []:    points += [point]
+            if point[0] != [] and point[1] != []:
+                points += [point]
         if len(points) == len(p2) == 2 or len(points) == len(p3) == 3:
             return points
         else:
             return None
 
-    ################################################################################
-    #
-    #        dxfpoints
-    #
-    ################################################################################
     def dxfpoints(self):
+        """
+        dxfpoints
+        """
         if self.selected_paths == {}:
             self.error(_(
                 "Noting is selected. Please select something to convert to drill point (dxfpoint) or clear point sign."),
@@ -1263,12 +1455,12 @@ class LaserGcode(inkex.Effect):
                     if self.options.dxfpoints_action == 'replace':
                         path.set("dxfpoint", "1")
                         r = re.match("^\s*.\s*(\S+)", path.get("d"))
-                        if r != None:
+                        if r is not None:
                             print_(("got path=", r.group(1)))
                             path.set("d",
-                                     "m %s 2.9375,-6.343750000001 0.8125,1.90625 6.843748640396,-6.84374864039 0,0 0.6875,0.6875 -6.84375,6.84375 1.90625,0.812500000001 z" % r.group(
-                                         1))
-                            path.set("style", styles["dxf_points"])
+                                     "m {} 2.9375,-6.343750000001 0.8125,1.90625 6.843748640396,-6.84374864039 0,0 0.6875,0.6875 -6.84375,6.84375 1.90625,0.812500000001 z".format(
+                                         r.group(1)))
+                            path.set("style", STYLES["dxf_points"])
 
                     if self.options.dxfpoints_action == 'save':
                         path.set("dxfpoint", "1")
@@ -1276,12 +1468,10 @@ class LaserGcode(inkex.Effect):
                     if self.options.dxfpoints_action == 'clear' and path.get("dxfpoint") == "1":
                         path.set("dxfpoint", "0")
 
-    ################################################################################
-    #
-    #        Laser
-    #
-    ################################################################################
     def laser(self):
+        """
+        Laser
+        """
 
         def get_boundaries(points):
             minx, miny, maxx, maxy = None, None, None, None
@@ -1289,77 +1479,93 @@ class LaserGcode(inkex.Effect):
             for p in points:
                 if minx == p[0]:
                     out[0] += [p]
-                if minx == None or p[0] < minx:
+                if minx is None or p[0] < minx:
                     minx = p[0]
                     out[0] = [p]
 
                 if miny == p[1]:
                     out[1] += [p]
-                if miny == None or p[1] < miny:
+                if miny is None or p[1] < miny:
                     miny = p[1]
                     out[1] = [p]
 
                 if maxx == p[0]:
                     out[2] += [p]
-                if maxx == None or p[0] > maxx:
+                if maxx is None or p[0] > maxx:
                     maxx = p[0]
                     out[2] = [p]
 
                 if maxy == p[1]:
                     out[3] += [p]
-                if maxy == None or p[1] > maxy:
+                if maxy is None or p[1] > maxy:
                     maxy = p[1]
                     out[3] = [p]
             return out
 
-        def remove_duplicates(points):
-            i = 0
-            out = []
-            for p in points:
-                for j in range(i, len(points)):
-                    if p == points[j]: points[j] = [None, None]
-                if p != [None, None]: out += [p]
-            i += 1
-            return (out)
+        def remove_duplicates(points: List[List[float]]) -> List[List[float]]:
+            """
+            Remove duplicate [x,y] points from the list, while maintaining the
+            original order
 
-        def get_way_len(points):
-            l = 0
-            for i in range(1, len(points)):
-                l += math.sqrt((points[i][0] - points[i - 1][0]) ** 2 + (points[i][1] - points[i - 1][1]) ** 2)
-            return l
+            Parameters
+            ----------
+            points : List[List[float]]
+                Original ordered list of points, as a list of [x,y] pairs
+
+            Returns
+            -------
+            List[List[float]]
+                Original list with duplicates removed
+            """
+            return list(OrderedDict.fromkeys(points))
+
+        def get_way_len(points: np.ndarray) -> float:
+            """
+            Get the total length of the path (sum of distances between all consecutive points)
+
+            Parameters
+            ----------
+            points : np.ndarray
+                Nx2 array of all (x,y) points in the path
+            """
+            diffs = np.diff(points, axis=0)
+            if len(diffs) == 0:
+                return 0.
+            else:
+                seg_dists = np.sqrt((diffs ** 2).sum(axis=1))
+                return sum(seg_dists)
 
         def sort_dxfpoints(points):
             points = remove_duplicates(points)
 
+            # Possible ways (directions) to move
+            # 0=left, 1=down, 2=right, 3=up
             ways = [
-                # l=0, d=1, r=2, u=3
-                [3, 0],  # ul
-                [3, 2],  # ur
-                [1, 0],  # dl
-                [1, 2],  # dr
-                [0, 3],  # lu
-                [0, 1],  # ld
-                [2, 3],  # ru
-                [2, 1],  # rd
+                [3, 0],  # up/left
+                [3, 2],  # up/right
+                [1, 0],  # down/left
+                [1, 2],  # down/right
+                [0, 3],  # left/up
+                [0, 1],  # left/down
+                [2, 3],  # right/up
+                [2, 1],  # right/down
             ]
 
-            minimal_way = []
-            minimal_len = None
-            minimal_way_type = None
+            minimum_way = []
+            minimum_len = None
             for w in ways:
                 tpoints = points[:]
                 cw = []
-                for j in range(0, len(points)):
+                for j in range(len(points)):
                     p = get_boundaries(get_boundaries(tpoints)[w[0]])[w[1]]
                     tpoints.remove(p[0])
                     cw += p
-                curlen = get_way_len(cw)
-                if minimal_len == None or curlen < minimal_len:
-                    minimal_len = curlen
-                    minimal_way = cw
-                    minimal_way_type = w
+                current_len = get_way_len(cw)
+                if minimum_len is None or current_len < minimum_len:
+                    minimum_len = current_len
+                    minimum_way = cw
 
-            return minimal_way
+            return minimum_way
 
         if self.selected_paths == {}:
             paths = self.paths
@@ -1373,11 +1579,11 @@ class LaserGcode(inkex.Effect):
         biarc_group = etree.SubElement(
             list(self.selected_paths.keys())[0] if len(list(self.selected_paths.keys())) > 0 else self.layers[0],
             inkex.addNS('g', 'svg'))
-        print_(("self.layers=", self.layers))
-        print_(("paths=", paths))
+        print_("self.layers={}".forma(self.layers))
+        print_("paths={}".format(paths))
         for layer in self.layers:
             if layer in paths:
-                print_(("layer", layer))
+                print_("layer={}".format(layer))
                 p = []
                 dxfpoints = []
                 for path in paths[layer]:
@@ -1393,7 +1599,7 @@ class LaserGcode(inkex.Effect):
                         tmp_curve = self.transform_csp(csp, layer)
                         x = tmp_curve[0][0][0][0]
                         y = tmp_curve[0][0][0][1]
-                        print_("got dxfpoint (scaled) at (%f,%f)" % (x, y))
+                        print_("got dxfpoint (scaled) at ({x},{y})".format(x=x, y=y))
                         dxfpoints += [[x, y]]
                     else:
                         p += csp
@@ -1404,21 +1610,24 @@ class LaserGcode(inkex.Effect):
 
         self.export_gcode(gcode)
 
-    ################################################################################
-    #
-    #        Orientation
-    #
-    ################################################################################
     def orientation(self, layer=None):
+        """
+        Orientation
+
+        Parameters
+        ----------
+        layer : [type], optional
+            [description], by default None
+        """
         print_("entering orientations")
-        if layer == None:
+        if layer is None:
             layer = self.current_layer if self.current_layer is not None else self.document.getroot()
         if layer in self.orientation_points:
             self.error(_("Active layer already has orientation points! Remove them or select another layer!"),
                        "active_layer_already_has_orientation_points")
 
         orientation_group = etree.SubElement(layer, inkex.addNS('g', 'svg'),
-                                                   {"gcodetools": "Gcodetools orientation group"})
+                                             {"gcodetools": "Gcodetools orientation group"})
 
         # translate == ['0', '-917.7043']
         if layer.get("transform") != None:
@@ -1431,22 +1640,25 @@ class LaserGcode(inkex.Effect):
 
         if self.document.getroot().get('height') == "100%":
             doc_height = 1052.3622047
-            print_("Overriding height from 100 percents to %s" % doc_height)
+            print_("Overriding height from 100 percents to {}".format(doc_height))
 
-        print_("Document height: " + str(doc_height));
+        print_("Document height: {}".format(doc_height))
 
         if self.options.unit == "G21 (All units in mm)":
             points = [[0., 0., 0.], [100., 0., 0.], [0., 100., 0.]]
             orientation_scale = 1
-            print_("orientation_scale < 0 ===> switching to mm units=%0.10f" % orientation_scale)
+            print_("orientation_scale < 0 ===> switching to mm units={:.10f}".format(
+                orientation_scale))
         elif self.options.unit == "G20 (All units in inches)":
             points = [[0., 0., 0.], [5., 0., 0.], [0., 5., 0.]]
             orientation_scale = 90
-            print_("orientation_scale < 0 ===> switching to inches units=%0.10f" % orientation_scale)
+            print_("orientation_scale < 0 ===> switching to inches units={:.10f}".format(
+                orientation_scale))
 
         points = points[:2]
 
-        print_(("using orientation scale", orientation_scale, "i=", points))
+        print_("using orientation scale {scale} i={points}".format(
+            scale=orientation_scale, points=points))
         for i in points:
             # X == Correct!
             # si == x,y coordinate in px
@@ -1454,33 +1666,28 @@ class LaserGcode(inkex.Effect):
             # if layer have any transform it will be in translate so lets add that
             si = [i[0] * orientation_scale, (i[1] * orientation_scale) + float(translate[1])]
             g = etree.SubElement(orientation_group, inkex.addNS('g', 'svg'),
-                                       {'gcodetools': "Gcodetools orientation point (2 points)"})
+                                 {'gcodetools': "Gcodetools orientation point (2 points)"})
             etree.SubElement(g, inkex.addNS('path', 'svg'),
-                                   {
-                                       'style': "stroke:none;fill:#000000;",
-                                       'd': 'm %s,%s 2.9375,-6.343750000001 0.8125,1.90625 6.843748640396,-6.84374864039 0,0 0.6875,0.6875 -6.84375,6.84375 1.90625,0.812500000001 z z' % (
-                                           si[0], -si[1] + doc_height),
-                                       'gcodetools': "Gcodetools orientation point arrow"
-                                   })
+                             {
+                'style': "stroke:none;fill:#000000;",
+                'd': 'm {si0},{si1} 2.9375,-6.343750000001 0.8125,1.90625 6.843748640396,-6.84374864039 0,0 0.6875,0.6875 -6.84375,6.84375 1.90625,0.812500000001 z z'.format(
+                    si0=si[0], si1=-si[1] + doc_height),
+                'gcodetools': "Gcodetools orientation point arrow"
+            })
             t = etree.SubElement(g, inkex.addNS('text', 'svg'),
-                                       {
-                                           'style': "font-size:10px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;fill-opacity:1;stroke:none;",
-                                           inkex.addNS("space", "xml"): "preserve",
-                                           'x': str(si[0] + 10),
-                                           'y': str(-si[1] - 10 + doc_height),
-                                           'gcodetools': "Gcodetools orientation point text"
-                                       })
-            t.text = "(%s; %s; %s)" % (i[0], i[1], i[2])
-
-    ################################################################################
-    #
-    #        Effect
-    #
-    #        Main function of Gcodetools class
-    #
-    ################################################################################
+                                 {
+                'style': "font-size:10px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#000000;fill-opacity:1;stroke:none;",
+                inkex.addNS("space", "xml"): "preserve",
+                'x': str(si[0] + 10),
+                'y': str(-si[1] - 10 + doc_height),
+                'gcodetools': "Gcodetools orientation point text"
+            })
+            t.text = "({}; {}; {})".format(i[0], i[1], i[2])
 
     def effect(self):
+        """
+        Main function of Gcodetools class
+        """
         global options
         options = self.options
         options.self = self
@@ -1489,16 +1696,19 @@ class LaserGcode(inkex.Effect):
         global print_
         if self.options.log_create_log:
             try:
-                if os.path.isfile(self.options.log_filename): os.remove(self.options.log_filename)
+                if os.path.isfile(self.options.log_filename):
+                    os.remove(self.options.log_filename)
                 with open(self.options.log_filename, 'a') as log_file:
                     log_file.write("Gcodetools log file.\nStarted at {}.\n{}\n".format(
                         time.strftime("%d.%m.%Y %H:%M:%S"),
                         options.log_filename))
                     log_file.write("{} tab is active.\n".format(self.options.active_tab))
-            except:
-                print_ = lambda *x: None
+            except IOError:
+                # If the log file cannot be created or written to, set the log file to None
+                # This will mean that the print_() function doesn't save the logs
+                options.log_filename = None
         else:
-            print_ = lambda *x: None
+            options.log_filename = None
         self.get_info()
         if self.orientation_points == {}:
             self.error(_(
@@ -1507,15 +1717,20 @@ class LaserGcode(inkex.Effect):
             self.orientation(self.layers[min(0, len(self.layers) - 1)])
             self.get_info()
 
+        gcode_before = "G4 P0 \n{laser_on} S{laser_power}\nG4 P{delay}".format(
+            laser_on=self.options.laser_command,
+            laser_power=int(self.options.laser_power),
+            delay=self.options.power_delay)
+        gcode_after = "G4 P0 \n{laser_off} S0\nG1 F{travel_speed}".format(
+            laser_off=self.options.laser_off_command,
+            travel_speed=self.options.travel_speed)
         self.tools = {
             "name": "Laser Engraver",
             "id": "Laser Engraver",
             "penetration feed": self.options.laser_speed,
             "feed": self.options.laser_speed,
-            "gcode before path": ("G4 P0 \n" + self.options.laser_command + " S" + str(
-                int(self.options.laser_power)) + "\nG4 P" + self.options.power_delay),
-            "gcode after path": (
-                    "G4 P0 \n" + self.options.laser_off_command + " S0" + "\n" + "G1 F" + self.options.travel_speed),
+            "gcode before path": gcode_before,
+            "gcode after path": gcode_after,
         }
 
         self.get_info()
